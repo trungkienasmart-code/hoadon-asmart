@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>AS Mart - Xuất Hóa Đơn VAT</title>
   <!-- Thư viện quét mã vạch HTML5 QRcode -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap');
 
@@ -548,67 +548,140 @@
     document.getElementById('f_date').value = yyyy + '-' + mm + '-' + dd;
   }
 
-  /* ═══ TÍNH NĂNG QUÉT CAMERA TỐI ƯU CHO MÃ VẠCH 1D CODE 128 ═══ */
+/* ═══ QUÉT MÃ VẠCH CHUYÊN BIỆT CHO BILL 1D (QUAGGA2 + NATIVE DETECTOR) ═══ */
+  var _scannerRunning = false;
+
   function startScanner() {
     document.getElementById('modal-scanner').style.display = 'flex';
+    var readerElem = document.getElementById('reader');
+    readerElem.innerHTML = ''; // Làm sạch khung chiếu
 
-    if (!_html5QrCode) {
-      // Chỉ định rõ các chuẩn mã vạch 1D, ưu tiên Code 128 (chứa cả chữ và số)
-      var formatsToSupport = [
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.QR_CODE
-      ];
-      _html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsToSupport });
+    // 1. Ưu tiên hàng đầu: Dùng BarcodeDetector API tích hợp sẵn trong trình duyệt Android (nhận diện tức thì)
+    if ('BarcodeDetector' in window) {
+      BarcodeDetector.getSupportedFormats().then(function(formats) {
+        if (formats.indexOf('code_128') !== -1) {
+          startNativeBarcodeScanner();
+        } else {
+          startQuaggaEngine();
+        }
+      }).catch(function() {
+        startQuaggaEngine();
+      });
+    } else {
+      startQuaggaEngine();
     }
+  }
 
-    // Mở rộng khung ngắm tối đa để bao trọn mã vạch dài
-    var boxWidth = Math.min(window.innerWidth - 30, 360);
-    var boxHeight = 180; // Tăng gấp đôi độ cao để dễ ngắm
+  // Chế độ 1: Native Chrome Android (Bắt cực nhạy và sắc nét)
+  function startNativeBarcodeScanner() {
+    var detector = new BarcodeDetector({ formats: ['code_128', 'code_39'] });
+    var video = document.createElement('video');
+    video.setAttribute('autoplay', '');
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'cover';
+    
+    document.getElementById('reader').appendChild(video);
 
-    var config = {
-      fps: 20,
-      qrbox: { width: boxWidth, height: boxHeight },
-      experimentalFeatures: {
-        useBarCodeDetectorIfSupported: true // Kích hoạt phần cứng giải mã nhanh của điện thoại
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { min: 1280, ideal: 1920 }, // Ép camera lấy độ phân giải cao để không bị mờ vạch bill
+        height: { min: 720, ideal: 1080 }
       }
-    };
+    }).then(function(stream) {
+      window._nativeStream = stream;
+      video.srcObject = stream;
+      _scannerRunning = true;
 
-    _html5QrCode.start(
-      { facingMode: "environment" },
-      config,
-      function(decodedText) {
-        var code = (decodedText || '').trim().toUpperCase();
+      var scanInterval = setInterval(function() {
+        if (!_scannerRunning) {
+          clearInterval(scanInterval);
+          return;
+        }
+        detector.detect(video).then(function(barcodes) {
+          if (barcodes.length > 0) {
+            var val = (barcodes[0].rawValue || '').trim().toUpperCase();
+            var billRegex = /^\d{3}[A-Z]{2}221\d{10}$/;
+            if (billRegex.test(val) && val.length === 18) {
+              clearInterval(scanInterval);
+              document.getElementById('f_tid').value = val;
+              stopScanner();
+            }
+          }
+        }).catch(function() {});
+      }, 150); // Quét liên tục mỗi 150ms
 
-        // Regex chấp nhận: 3 số đầu (000 hoặc 001) + 2 chữ cái quầy + 221 + 10 số (YYMM + STT)
+    }).catch(function(err) {
+      startQuaggaEngine(); // Nếu không mở được stream Full HD thì chuyển sang Quagga
+    });
+  }
+
+  // Chế độ 2: Quagga2 Engine (Tối ưu hóa độ tương phản cao cho bill in nhiệt)
+  function startQuaggaEngine() {
+    _scannerRunning = true;
+
+    Quagga.init({
+      inputStream: {
+        name: "Live",
+        type: "LiveStream",
+        target: document.querySelector('#reader'),
+        constraints: {
+          facingMode: "environment",
+          width: { min: 1280, ideal: 1920 },
+          height: { min: 720, ideal: 1080 }
+        },
+        singleChannel: true // Chuyển sang ảnh đơn sắc đen trắng để bắt vạch sát nhau
+      },
+      locator: {
+        patchSize: "large",
+        halfSample: false
+      },
+      numOfWorkers: navigator.hardwareConcurrency || 2,
+      decoder: {
+        readers: ["code_128_reader"] // Khóa duy nhất chuẩn Code 128
+      },
+      locate: true
+    }, function(err) {
+      if (err) {
+        alert("Không thể khởi động Camera. Vui lòng cấp quyền truy cập trình duyệt.");
+        stopScanner();
+        return;
+      }
+      Quagga.start();
+    });
+
+    Quagga.onDetected(function(result) {
+      if (result && result.codeResult && result.codeResult.code) {
+        var code = result.codeResult.code.trim().toUpperCase();
         var billRegex = /^\d{3}[A-Z]{2}221\d{10}$/;
-
         if (billRegex.test(code) && code.length === 18) {
           document.getElementById('f_tid').value = code;
-          stopScanner(); // Quét đúng -> Tự động đóng camera và điền vào ô
+          stopScanner();
         }
-        // Nếu quét phải chuỗi rác/chưa đủ ký tự: Tự động lướt qua để quét tiếp, không hiện alert
-      },
-      function(error) {
-        // Lỗi nhận diện từng khung hình (bỏ qua để quét liên tục)
       }
-    ).catch(function(err) {
-      alert("Không thể mở camera. Vui lòng cấp quyền truy cập máy ảnh cho trình duyệt.");
-      stopScanner();
     });
   }
 
   function stopScanner() {
-    if (_html5QrCode && _html5QrCode.isScanning) {
-      _html5QrCode.stop().then(function() {
-        document.getElementById('modal-scanner').style.display = 'none';
-      }).catch(function() {
-        document.getElementById('modal-scanner').style.display = 'none';
-      });
-    } else {
-      document.getElementById('modal-scanner').style.display = 'none';
+    _scannerRunning = false;
+
+    // Tắt stream native nếu có
+    if (window._nativeStream) {
+      window._nativeStream.getTracks().forEach(function(track) { track.stop(); });
+      window._nativeStream = null;
     }
+
+    // Tắt Quagga nếu đang chạy
+    try {
+      Quagga.stop();
+      Quagga.offDetected();
+    } catch(e) {}
+
+    document.getElementById('reader').innerHTML = '';
+    document.getElementById('modal-scanner').style.display = 'none';
   }
 
   /* ═══ TRA CỨU MÃ SỐ THUẾ AN TOÀN ═══ */
