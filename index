@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>AS Mart - Xuất Hóa Đơn VAT</title>
+  <!-- Thư viện quét mã vạch HTML5 QRcode -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Be Vietnam Pro', Arial, sans-serif;
+      background: #f0f4f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-header {
+      background: #198754;
+      color: white;
+      padding: 18px 20px 16px;
+      text-align: center;
+    }
+    .page-header h1 { font-size: 20px; font-weight: 600; }
+    .page-header p  { font-size: 14px; opacity: 0.88; margin-top: 3px; }
+
+    .form-body {
+      flex: 1;
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 650px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+
+    label { font-size: 14px; font-weight: 500; color: #333; }
+    label .req { color: #dc3545; margin-left: 2px; }
+    .field-hint { font-size: 12px; color: #6c757d; }
+
+    .input-scan-group {
+      display: flex;
+      gap: 8px;
+      position: relative;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 13px 14px;
+      font-size: 16px;
+      font-family: inherit;
+      border: 1.5px solid #c8d5c8;
+      border-radius: 8px;
+      background: #fff;
+      color: #222;
+      outline: none;
+      transition: border-color 0.15s;
+      -webkit-appearance: none;
+    }
+    input:focus, textarea:focus {
+      border-color: #198754;
+      box-shadow: 0 0 0 3px rgba(25,135,84,0.12);
+    }
+    textarea { resize: none; height: 80px; }
+
+    /* Nút kích hoạt Camera */
+    .btn-camera {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 0 16px;
+      background: #e8f5ee;
+      border: 1.5px solid #198754;
+      border-radius: 8px;
+      color: #198754;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-camera:active { background: #cce9d8; }
+
+    #tax-searching {
+      display: none;
+      font-size: 13px;
+      color: #198754;
+      font-weight: 500;
+      margin-top: 2px;
+    }
+
+    #suggest-bar {
+      display: none;
+      background: #e8f5e9;
+      border: 1.5px solid #66bb6a;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: #1b5e20;
+      line-height: 1.5;
+    }
+    #suggest-bar .sug-title {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 6px;
+      color: #2e7d32;
+    }
+    #suggest-bar .sug-preview {
+      margin-bottom: 10px;
+      word-break: break-word;
+    }
+    .sug-actions { display: flex; gap: 10px; }
+    .btn-sug-yes {
+      flex: 1;
+      padding: 9px;
+      background: #2e7d32;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-sug-no {
+      flex: 1;
+      padding: 9px;
+      background: transparent;
+      color: #2e7d32;
+      border: 1.5px solid #2e7d32;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    #err-msg {
+      display: none;
+      font-size: 14px;
+      color: #842029;
+      background: #fff0f0;
+      border: 1.5px solid #f5c2c7;
+      border-radius: 8px;
+      padding: 11px 14px;
+      line-height: 1.5;
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 16px;
+      background: #198754;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-submit:active { transform: scale(0.98); background: #146c43; }
+
+    /* Modal xác nhận */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+    }
+    .modal-box {
+      background: #fff;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+    .modal-header {
+      background: #198754;
+      color: white;
+      padding: 14px 18px;
+      font-size: 17px;
+      font-weight: 600;
+      text-align: center;
+    }
+    .modal-content {
+      padding: 16px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .modal-alert {
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      color: #856404;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .summary-table { width: 100%; border-collapse: collapse; }
+    .summary-table td {
+      padding: 7px 6px;
+      border-bottom: 1px solid #eee;
+      vertical-align: top;
+    }
+    .summary-table td.col-title { font-weight: 600; color: #555; width: 35%; }
+    .summary-table td.col-val { color: #111; font-weight: 500; word-break: break-word; }
+
+    .modal-footer {
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 10px;
+    }
+    .btn-modal-cancel {
+      flex: 1;
+      padding: 12px;
+      background: #e9ecef;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #495057;
+      cursor: pointer;
+    }
+    .btn-modal-confirm {
+      flex: 1.5;
+      padding: 12px;
+      background: #198754;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+    }
+    .btn-modal-confirm:disabled { background: #9ec9b4; cursor: not-allowed; }
+
+    /* Modal Camera Scanner */
+    #modal-scanner {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 1200;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .scanner-box {
+      width: 100%;
+      max-width: 480px;
+      background: white;
+      border-radius: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .scanner-header {
+      padding: 14px 16px;
+      background: #198754;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+    }
+    .scanner-close {
+      background: transparent;
+      border: none;
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+    }
+    #reader { width: 100%; min-height: 280px; }
+    .scanner-tip {
+      padding: 12px;
+      font-size: 13px;
+      color: #555;
+      text-align: center;
+      background: #f8f9fa;
+    }
+
+    /* Màn hình thành công */
+    #screen-success {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      background: #f0f4f0;
+    }
+    .success-box {
+      background: #fff;
+      border: 2.5px solid #198754;
+      border-radius: 18px;
+      padding: 30px 20px;
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+    }
+    .check-wrap {
+      width: 70px; height: 70px;
+      border-radius: 50%;
+      background: #d1e7dd;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .success-title { font-size: 24px; font-weight: 600; color: #0a3622; margin-bottom: 8px; }
+    .success-sub   { font-size: 15px; color: #444; line-height: 1.5; margin-bottom: 20px; }
+    .info-card {
+      background: #f4fbf7;
+      border: 1.5px solid #a3cfbb;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 14px;
+      color: #333;
+      line-height: 1.7;
+      text-align: left;
+    }
+    .info-card .info-title { font-weight: 600; color: #198754; font-size: 16px; margin-bottom: 6px; }
+    .info-card hr { border: none; border-top: 1px solid #c3e6cb; margin: 10px 0; }
+    .info-card strong { color: #0a3622; }
+    .btn-reset {
+      margin-top: 20px;
+      width: 100%;
+      padding: 13px;
+      background: transparent;
+      color: #198754;
+      border: 2px solid #198754;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2.5px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 480px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="screen-form" style="display:flex; flex-direction:column; min-height:100vh;">
+  <div class="page-header">
+    <h1>Hệ thống siêu thị AS Mart</h1>
+    <p>Nhập thông tin xuất hóa đơn VAT</p>
+  </div>
+
+  <div class="form-body">
+
+    <!-- Dòng 1: Số giao dịch + Ngày mua hàng -->
+    <div class="row">
+      <div class="field">
+        <label>Số giao dịch (18 ký tự) <span class="req">*</span></label>
+        <div class="input-scan-group">
+          <input id="f_tid" type="text" placeholder="001BU22126..." maxlength="18" autocomplete="off" oninput="this.value = this.value.toUpperCase().trim()"/>
+          <button type="button" class="btn-camera" onclick="startScanner()" title="Quét mã vạch bill">
+            📷 Quét
+          </button>
+        </div>
+        <span class="field-hint">Mẫu: 001 + Quầy (2 chữ) + 221 + YYMM + 6 số</span>
+      </div>
+      <div class="field">
+        <label>Ngày mua hàng <span class="req">*</span></label>
+        <input id="f_date" type="date"/>
+      </div>
+    </div>
+
+    <!-- Dòng 2: Mã số thuế (LÊN TRƯỚC) + Tên đơn vị -->
+    <div class="row">
+      <div class="field">
+        <label>Mã số thuế</label>
+        <input id="f_tax" type="text" placeholder="Nhập MST tra cứu thông tin..." oninput="onTaxInput()" onblur="checkTaxId()"/>
+        <span id="tax-searching">🔍 Đang tìm kiếm thông tin cũ...</span>
+      </div>
+      <div class="field">
+        <label>Tên đơn vị <span class="req">*</span></label>
+        <input id="f_company" type="text" placeholder="Tên công ty / cá nhân"/>
+      </div>
+    </div>
+
+    <!-- Banner gợi ý thông tin cũ -->
+    <div id="suggest-bar">
+      <div class="sug-title">✅ Tìm thấy thông tin xuất hóa đơn gần nhất:</div>
+      <div class="sug-preview" id="suggest-preview"></div>
+      <div class="sug-actions">
+        <button class="btn-sug-yes" onclick="applyOldData()">Dùng thông tin này</button>
+        <button class="btn-sug-no" onclick="dismissSuggest()">Nhập thủ công</button>
+      </div>
+    </div>
+
+    <!-- Dòng 3: Địa chỉ -->
+    <div class="field">
+      <label>Địa chỉ xuất hóa đơn <span class="req">*</span></label>
+      <input id="f_addr" type="text" placeholder="Địa chỉ đăng ký kinh doanh"/>
+    </div>
+
+    <!-- Dòng 4: Người mua + Email -->
+    <div class="row">
+      <div class="field">
+        <label>Người mua hàng</label>
+        <input id="f_name" type="text" placeholder="Họ và tên"/>
+      </div>
+      <div class="field">
+        <label>Email nhận hóa đơn <span class="req">*</span></label>
+        <input id="f_email" type="email" placeholder="email@example.com"/>
+      </div>
+    </div>
+
+    <!-- Dòng 5: Số điện thoại + CCCD -->
+    <div class="row">
+      <div class="field">
+        <label>Số điện thoại <span class="req">*</span></label>
+        <input id="f_phone" type="tel" placeholder="0xxxxxxxxx"/>
+      </div>
+      <div class="field">
+        <label>Căn cước công dân</label>
+        <input id="f_cccd" type="text" placeholder="Số CCCD (nếu có)"/>
+      </div>
+    </div>
+
+    <!-- Dòng 6: Ghi chú -->
+    <div class="field">
+      <label>Ghi chú / yêu cầu đặc biệt</label>
+      <textarea id="f_note" placeholder="Nhập yêu cầu hoặc lưu ý thêm khi xuất hóa đơn..."></textarea>
+    </div>
+
+    <div id="err-msg"></div>
+
+    <button class="btn-submit" id="btn-open-confirm" onclick="openConfirmModal()">Gửi thông tin</button>
+  </div>
+</div>
+
+<!-- ════════════ MODAL CAMERA QUÉT MÃ ════════════ -->
+<div id="modal-scanner">
+  <div class="scanner-box">
+    <div class="scanner-header">
+      <span>Hướng camera vào mã vạch bill</span>
+      <button class="scanner-close" onclick="stopScanner()">✕</button>
+    </div>
+    <div id="reader"></div>
+    <div class="scanner-tip">Đặt mã vạch ở cuối hóa đơn vào khung ngắm để quét tự động.</div>
+  </div>
+</div>
+
+<!-- ════════════ MODAL XÁC NHẬN THÔNG TIN ════════════ -->
+<div class="modal-backdrop" id="modal-confirm">
+  <div class="modal-box">
+    <div class="modal-header">Xác nhận thông tin xuất hóa đơn</div>
+    <div class="modal-content">
+      <div class="modal-alert">
+        ⚠️ <b>Lưu ý quan trọng:</b> Xin quý khách kiểm tra kỹ toàn bộ thông tin, nếu có sai lệch sẽ không sửa đổi và có thể ảnh hưởng đến việc xuất hóa đơn VAT không thực hiện được.
+      </div>
+      <table class="summary-table">
+        <tr><td class="col-title">Số giao dịch:</td><td class="col-val" id="cfm_tid"></td></tr>
+        <tr><td class="col-title">Ngày mua:</td><td class="col-val" id="cfm_date"></td></tr>
+        <tr><td class="col-title">Mã số thuế:</td><td class="col-val" id="cfm_tax"></td></tr>
+        <tr><td class="col-title">Tên đơn vị:</td><td class="col-val" id="cfm_company"></td></tr>
+        <tr><td class="col-title">Địa chỉ:</td><td class="col-val" id="cfm_addr"></td></tr>
+        <tr><td class="col-title">Người mua:</td><td class="col-val" id="cfm_name"></td></tr>
+        <tr><td class="col-title">Email nhận:</td><td class="col-val" id="cfm_email"></td></tr>
+        <tr><td class="col-title">Số điện thoại:</td><td class="col-val" id="cfm_phone"></td></tr>
+        <tr><td class="col-title">CCCD:</td><td class="col-val" id="cfm_cccd"></td></tr>
+        <tr><td class="col-title">Ghi chú:</td><td class="col-val" id="cfm_note"></td></tr>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-modal-cancel" onclick="closeConfirmModal()">Kiểm tra lại</button>
+      <button class="btn-modal-confirm" id="btn-final-send" onclick="submitConfirmedForm()">Đồng ý & Gửi</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ SCREEN SUCCESS ════════════ -->
+<div id="screen-success">
+  <div class="success-box">
+    <div class="check-wrap">
+      <svg width="36" height="36" viewBox="0 0 40 40" fill="none">
+        <polyline points="8,21 16,30 32,12" stroke="#198754" stroke-width="3.5"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="success-title">Gửi thành công!</div>
+    <div class="success-sub">Thông tin xuất hóa đơn của quý khách đã được ghi nhận.</div>
+    <div class="info-card">
+      <div class="info-title">Thông báo</div>
+      <div>Một email xác nhận đã được gửi tới hòm thư của quý khách.</div>
+      <hr/>
+      <div>Bộ phận kế toán hỗ trợ:</div>
+      <div style="margin-top:6px;">
+        <strong>0911.478.636</strong> &nbsp;|&nbsp; <strong>ketoan.asmart@gmail.com</strong>
+      </div>
+    </div>
+    <button class="btn-reset" onclick="resetForm()">Nhập hóa đơn khác</button>
+  </div>
+</div>
+
+<script>
+  // Dán URL Web App Apps Script bạn vừa triển khai vào đây:
+  var API_URL = "https://script.google.com/macros/s/AKfycby.../exec";
+
+  var _suggestedData  = null;
+  var _taxLookupTimer = null;
+  var _currentPayload = null;
+  var _html5QrCode    = null;
+
+  window.addEventListener('DOMContentLoaded', function() {
+    initCurrentDate();
+  });
+
+  function initCurrentDate() {
+    var today = new Date();
+    var yyyy = today.getFullYear();
+    var mm = String(today.getMonth() + 1).padStart(2, '0');
+    var dd = String(today.getDate()).padStart(2, '0');
+    document.getElementById('f_date').value = yyyy + '-' + mm + '-' + dd;
+  }
+
+  /* ═══ TÍNH NĂNG QUÉT CAMERA ═══ */
+  function startScanner() {
+    document.getElementById('modal-scanner').style.display = 'flex';
+    if (!_html5QrCode) {
+      _html5QrCode = new Html5Qrcode("reader");
+    }
+
+    var config = {
+      fps: 15,
+      qrbox: { width: 280, height: 120 },
+      aspectRatio: 1.0
+    };
+
+    _html5QrCode.start(
+      { facingMode: "environment" },
+      config,
+      function(decodedText) {
+        var code = (decodedText || '').trim().toUpperCase();
+        // Kiểm tra đúng định dạng bill 18 ký tự
+        var billRegex = /^001[A-Z]{2}221\d{10}$/;
+        if (billRegex.test(code)) {
+          document.getElementById('f_tid').value = code;
+          stopScanner();
+        } else {
+          // Nếu quét ra chuỗi khác 18 ký tự quy định
+          alert("Mã vạch vừa quét: " + code + " không khớp cấu trúc bill 18 ký tự chuẩn.");
+        }
+      },
+      function(error) {
+        // Lỗi nhận dạng từng frame (bỏ qua để quét tiếp)
+      }
+    ).catch(function(err) {
+      alert("Không thể mở camera. Vui lòng kiểm tra quyền truy cập Camera trên trình duyệt.");
+      stopScanner();
+    });
+  }
+
+  function stopScanner() {
+    if (_html5QrCode && _html5QrCode.isScanning) {
+      _html5QrCode.stop().then(function() {
+        document.getElementById('modal-scanner').style.display = 'none';
+      }).catch(function() {
+        document.getElementById('modal-scanner').style.display = 'none';
+      });
+    } else {
+      document.getElementById('modal-scanner').style.display = 'none';
+    }
+  }
+
+  /* ═══ TRA CỨU MÃ SỐ THUẾ AN TOÀN ═══ */
+  function onTaxInput() {
+    _suggestedData = null;
+    document.getElementById('suggest-bar').style.display = 'none';
+    clearTimeout(_taxLookupTimer);
+    var val = document.getElementById('f_tax').value.trim();
+    if (val.length >= 8) {
+      _taxLookupTimer = setTimeout(checkTaxId, 800);
+    }
+  }
+
+  function checkTaxId() {
+    clearTimeout(_taxLookupTimer);
+    var taxId = document.getElementById('f_tax').value.trim();
+    if (!taxId || taxId.length < 8) return;
+
+    document.getElementById('tax-searching').style.display = 'block';
+    document.getElementById('suggest-bar').style.display   = 'none';
+
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'lookupTax',
+        tax_id: taxId
+      })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(result) {
+      document.getElementById('tax-searching').style.display = 'none';
+      if (!result || !result.data) return;
+
+      _suggestedData = result.data;
+      var parts = [];
+      if (_suggestedData.company_name) parts.push('🏢 ' + _suggestedData.company_name);
+      if (_suggestedData.address)      parts.push('📍 ' + _suggestedData.address);
+      if (_suggestedData.email)        parts.push('✉️ '  + _suggestedData.email);
+      document.getElementById('suggest-preview').innerHTML = parts.join('<br/>');
+      document.getElementById('suggest-bar').style.display = 'block';
+    })
+    .catch(function() {
+      document.getElementById('tax-searching').style.display = 'none';
+    });
+  }
+
+  function applyOldData() {
+    if (!_suggestedData) return;
+    var d = _suggestedData;
+    document.getElementById('f_company').value = d.company_name || '';
+    document.getElementById('f_addr').value    = d.address      || '';
+    document.getElementById('f_name').value    = d.buyer_name   || '';
+    document.getElementById('f_email').value   = d.email        || '';
+    document.getElementById('f_phone').value   = d.phone        || '';
+    document.getElementById('f_cccd').value    = d.citizen_id   || '';
+    document.getElementById('f_note').value    = d.note         || '';
+    document.getElementById('suggest-bar').style.display = 'none';
+  }
+
+  function dismissSuggest() {
+    _suggestedData = null;
+    document.getElementById('suggest-bar').style.display = 'none';
+  }
+
+  /* ═══ MODAL XÁC NHẬN VÀ GỬI ═══ */
+  function openConfirmModal() {
+    var get = function(id) { return document.getElementById(id).value.trim(); };
+    var err = document.getElementById('err-msg');
+
+    var tid     = get('f_tid').toUpperCase();
+    var date    = get('f_date');
+    var company = get('f_company');
+    var addr    = get('f_addr');
+    var email   = get('f_email');
+    var phone   = get('f_phone');
+
+    var missing = [];
+    if (!tid)     missing.push('Số giao dịch');
+    if (!date)    missing.push('Ngày mua hàng');
+    if (!company) missing.push('Tên đơn vị');
+    if (!addr)    missing.push('Địa chỉ');
+    if (!email)   missing.push('Email');
+    if (!phone)   missing.push('Số điện thoại');
+
+    if (missing.length > 0) {
+      err.textContent = 'Vui lòng nhập đầy đủ: ' + missing.join(', ') + '.';
+      err.style.display = 'block';
+      err.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+
+    var billRegex = /^001[A-Z]{2}221\d{10}$/;
+    if (tid.length !== 18 || !billRegex.test(tid)) {
+      err.textContent = 'Mã bill "' + tid + '" không đúng quy định! Phải đúng 18 ký tự (Ví dụ: 001BU2212609002866).';
+      err.style.display = 'block';
+      err.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      err.textContent = 'Email không hợp lệ. Vui lòng kiểm tra lại.';
+      err.style.display = 'block';
+      return;
+    }
+
+    err.style.display = 'none';
+
+    var dateParts = date.split('-');
+    var dateFormatted = dateParts.length === 3 ? (dateParts[2] + '/' + dateParts[1] + '/' + dateParts[0]) : date;
+
+    _currentPayload = {
+      transaction_id : tid,
+      purchase_date  : dateFormatted,
+      company_name   : company,
+      tax_id         : get('f_tax'),
+      address        : addr,
+      buyer_name     : get('f_name'),
+      email          : email,
+      phone          : phone,
+      citizen_id     : get('f_cccd'),
+      note           : get('f_note')
+    };
+
+    document.getElementById('cfm_tid').textContent     = _currentPayload.transaction_id;
+    document.getElementById('cfm_date').textContent    = _currentPayload.purchase_date;
+    document.getElementById('cfm_tax').textContent     = _currentPayload.tax_id || '(Trống)';
+    document.getElementById('cfm_company').textContent = _currentPayload.company_name;
+    document.getElementById('cfm_addr').textContent    = _currentPayload.address;
+    document.getElementById('cfm_name').textContent    = _currentPayload.buyer_name || '(Trống)';
+    document.getElementById('cfm_email').textContent   = _currentPayload.email;
+    document.getElementById('cfm_phone').textContent   = _currentPayload.phone;
+    document.getElementById('cfm_cccd').textContent    = _currentPayload.citizen_id || '(Trống)';
+    document.getElementById('cfm_note').textContent    = _currentPayload.note || '(Trống)';
+
+    document.getElementById('modal-confirm').style.display = 'flex';
+  }
+
+  function closeConfirmModal() {
+    document.getElementById('modal-confirm').style.display = 'none';
+  }
+
+  function submitConfirmedForm() {
+    if (!_currentPayload) return;
+
+    var btnConfirm = document.getElementById('btn-final-send');
+    var err        = document.getElementById('err-msg');
+
+    btnConfirm.innerHTML = '<span class="spinner"></span>Đang xử lý...';
+    btnConfirm.disabled  = true;
+
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'submitInvoice',
+        data: _currentPayload
+      })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(result) {
+      closeConfirmModal();
+      btnConfirm.innerHTML = 'Đồng ý & Gửi';
+      btnConfirm.disabled  = false;
+
+      if (result && result.success === false) {
+        err.textContent = result.message;
+        err.style.display = 'block';
+      } else {
+        showSuccess();
+      }
+    })
+    .catch(function(e) {
+      closeConfirmModal();
+      btnConfirm.innerHTML = 'Đồng ý & Gửi';
+      btnConfirm.disabled  = false;
+      err.textContent = 'Lỗi kết nối máy chủ: ' + e.message;
+      err.style.display = 'block';
+    });
+  }
+
+  function showSuccess() {
+    document.getElementById('screen-form').style.display    = 'none';
+    document.getElementById('screen-success').style.display = 'flex';
+    window.scrollTo(0, 0);
+  }
+
+  function resetForm() {
+    ['f_tid','f_company','f_tax','f_addr',
+     'f_name','f_email','f_phone','f_cccd','f_note'].forEach(function(id) {
+      document.getElementById(id).value = '';
+    });
+    initCurrentDate();
+    _suggestedData  = null;
+    _currentPayload = null;
+    document.getElementById('suggest-bar').style.display    = 'none';
+    document.getElementById('tax-searching').style.display  = 'none';
+    document.getElementById('err-msg').style.display        = 'none';
+    document.getElementById('screen-success').style.display = 'none';
+    document.getElementById('screen-form').style.display    = 'flex';
+    window.scrollTo(0, 0);
+  }
+</script>
+</body>
+</html>
