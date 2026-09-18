@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>AS Mart - Xuất Hóa Đơn VAT</title>
   <!-- Thư viện quét mã vạch HTML5 QRcode -->
-  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap');
 
@@ -548,131 +548,81 @@
     document.getElementById('f_date').value = yyyy + '-' + mm + '-' + dd;
   }
 
-/* ═══ QUÉT MÃ VẠCH CHUYÊN BIỆT CHO BILL 1D (QUAGGA2 + NATIVE DETECTOR) ═══ */
-  var _scannerRunning = false;
+/* ═══ BỘ QUÉT MÃ VẠCH TỐI ƯU ĐA NỀN TẢNG (IOS SAFARI + ANDROID + ZALO) ═══ */
+  var _codeReader = null;
+  var _selectedDeviceId = null;
 
   function startScanner() {
     document.getElementById('modal-scanner').style.display = 'flex';
-    var readerElem = document.getElementById('reader');
-    readerElem.innerHTML = ''; // Làm sạch khung chiếu
+    var readerBox = document.getElementById('reader');
+    readerBox.innerHTML = ''; // Làm sạch khung chiếu
 
-    // 1. Ưu tiên hàng đầu: Dùng BarcodeDetector API tích hợp sẵn trong trình duyệt Android (nhận diện tức thì)
-    if ('BarcodeDetector' in window) {
-      BarcodeDetector.getSupportedFormats().then(function(formats) {
-        if (formats.indexOf('code_128') !== -1) {
-          startNativeBarcodeScanner();
-        } else {
-          startQuaggaEngine();
-        }
-      }).catch(function() {
-        startQuaggaEngine();
-      });
-    } else {
-      startQuaggaEngine();
-    }
-  }
+    // Tạo phần tử video trực tiếp hỗ trợ tối đa cho Safari iOS
+    var videoElem = document.createElement('video');
+    videoElem.id = 'scanner-video';
+    videoElem.setAttribute('autoplay', 'true');
+    videoElem.setAttribute('muted', 'true');
+    videoElem.setAttribute('playsinline', 'true'); // Bắt buộc cho Safari iOS
+    videoElem.style.width = '100%';
+    videoElem.style.height = '100%';
+    videoElem.style.objectFit = 'cover';
+    readerBox.appendChild(videoElem);
 
-  // Chế độ 1: Native Chrome Android (Bắt cực nhạy và sắc nét)
-  function startNativeBarcodeScanner() {
-    var detector = new BarcodeDetector({ formats: ['code_128', 'code_39'] });
-    var video = document.createElement('video');
-    video.setAttribute('autoplay', '');
-    video.setAttribute('muted', '');
-    video.setAttribute('playsinline', '');
-    video.style.width = '100%';
-    video.style.height = '100%';
-    video.style.objectFit = 'cover';
-    
-    document.getElementById('reader').appendChild(video);
+    // Cấu hình ZXing chỉ chuyên đọc Code 128 và Code 39
+    var hints = new Map();
+    var formats = [
+      ZXing.BarcodeFormat.CODE_128,
+      ZXing.BarcodeFormat.CODE_39
+    ];
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // Chế độ dò quét chi tiết cho mã in nhiệt mờ/sít
 
-    navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { min: 1280, ideal: 1920 }, // Ép camera lấy độ phân giải cao để không bị mờ vạch bill
-        height: { min: 720, ideal: 1080 }
-      }
-    }).then(function(stream) {
-      window._nativeStream = stream;
-      video.srcObject = stream;
-      _scannerRunning = true;
+    _codeReader = new ZXing.BrowserMultiFormatReader(hints);
 
-      var scanInterval = setInterval(function() {
-        if (!_scannerRunning) {
-          clearInterval(scanInterval);
-          return;
-        }
-        detector.detect(video).then(function(barcodes) {
-          if (barcodes.length > 0) {
-            var val = (barcodes[0].rawValue || '').trim().toUpperCase();
-            var billRegex = /^\d{3}[A-Z]{2}221\d{10}$/;
-            if (billRegex.test(val) && val.length === 18) {
-              clearInterval(scanInterval);
-              document.getElementById('f_tid').value = val;
-              stopScanner();
-            }
-          }
-        }).catch(function() {});
-      }, 150); // Quét liên tục mỗi 150ms
-
-    }).catch(function(err) {
-      startQuaggaEngine(); // Nếu không mở được stream Full HD thì chuyển sang Quagga
-    });
-  }
-
-  // Chế độ 2: Quagga2 Engine (Tối ưu hóa độ tương phản cao cho bill in nhiệt)
-  function startQuaggaEngine() {
-    _scannerRunning = true;
-
-    Quagga.init({
-      inputStream: {
-        name: "Live",
-        type: "LiveStream",
-        target: document.querySelector('#reader'),
-        constraints: {
-          facingMode: "environment",
-          width: { min: 1280, ideal: 1920 },
-          height: { min: 720, ideal: 1080 }
-        },
-        singleChannel: true // Chuyển sang ảnh đơn sắc đen trắng để bắt vạch sát nhau
-      },
-      locator: {
-        patchSize: "large",
-        halfSample: false
-      },
-      numOfWorkers: navigator.hardwareConcurrency || 2,
-      decoder: {
-        readers: ["code_128_reader"] // Khóa duy nhất chuẩn Code 128
-      },
-      locate: true
-    }, function(err) {
-      if (err) {
-        alert("Không thể khởi động Camera. Vui lòng cấp quyền truy cập trình duyệt.");
+    // Tìm camera sau (mặt lưng) của điện thoại
+    _codeReader.listVideoInputDevices().then(function(videoInputDevices) {
+      if (videoInputDevices.length === 0) {
+        alert("Không tìm thấy camera trên thiết bị.");
         stopScanner();
         return;
       }
-      Quagga.start();
-    });
 
-    Quagga.onDetected(function(result) {
-      if (result && result.codeResult && result.codeResult.code) {
-        var code = result.codeResult.code.trim().toUpperCase();
-        var billRegex = /^\d{3}[A-Z]{2}221\d{10}$/;
-        if (billRegex.test(code) && code.length === 18) {
-          document.getElementById('f_tid').value = code;
-          stopScanner();
+      // Ưu tiên chọn camera sau
+      var backCamera = videoInputDevices.find(function(device) {
+        return /back|rear|environment/i.test(device.label);
+      });
+      _selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[videoInputDevices.length - 1].deviceId;
+
+      // Kích hoạt quét liên tục từ camera
+      _codeReader.decodeFromVideoDevice(_selectedDeviceId, 'scanner-video', function(result, err) {
+        if (result) {
+          var code = (result.getText() || '').trim().toUpperCase();
+          var billRegex = /^\d{3}[A-Z]{2}221\d{10}$/;
+
+          if (billRegex.test(code) && code.length === 18) {
+            // Rung nhẹ điện thoại khi bắt được mã (hỗ trợ Android/một số bản iOS)
+            if (navigator.vibrate) navigator.vibrate(100);
+            
+            document.getElementById('f_tid').value = code;
+            stopScanner();
+          }
         }
-      }
+      });
+    }).catch(function(err) {
+      alert("Không thể khởi động camera trên thiết bị. Nếu dùng iPhone, vui lòng cấp quyền Camera trong Cài đặt > Safari hoặc mở bằng trình duyệt Safari mặc định thay vì Zalo.");
+      stopScanner();
     });
   }
 
   function stopScanner() {
-    _scannerRunning = false;
-
-    // Tắt stream native nếu có
-    if (window._nativeStream) {
-      window._nativeStream.getTracks().forEach(function(track) { track.stop(); });
-      window._nativeStream = null;
+    if (_codeReader) {
+      _codeReader.reset();
+      _codeReader = null;
     }
+    var readerBox = document.getElementById('reader');
+    if (readerBox) readerBox.innerHTML = '';
+    document.getElementById('modal-scanner').style.display = 'none';
+  }
 
     // Tắt Quagga nếu đang chạy
     try {
