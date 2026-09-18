@@ -548,17 +548,31 @@
     document.getElementById('f_date').value = yyyy + '-' + mm + '-' + dd;
   }
 
-  /* ═══ TÍNH NĂNG QUÉT CAMERA ═══ */
+  /* ═══ TÍNH NĂNG QUÉT CAMERA TỐI ƯU CHO MÃ VẠCH 1D CODE 128 ═══ */
   function startScanner() {
     document.getElementById('modal-scanner').style.display = 'flex';
+
     if (!_html5QrCode) {
-      _html5QrCode = new Html5Qrcode("reader");
+      // Chỉ định rõ các chuẩn mã vạch 1D, ưu tiên Code 128 (chứa cả chữ và số)
+      var formatsToSupport = [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.QR_CODE
+      ];
+      _html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsToSupport });
     }
 
+    // Mở rộng khung ngắm tối đa để bao trọn mã vạch dài
+    var boxWidth = Math.min(window.innerWidth - 30, 360);
+    var boxHeight = 180; // Tăng gấp đôi độ cao để dễ ngắm
+
     var config = {
-      fps: 15,
-      qrbox: { width: 280, height: 120 },
-      aspectRatio: 1.0
+      fps: 20,
+      qrbox: { width: boxWidth, height: boxHeight },
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true // Kích hoạt phần cứng giải mã nhanh của điện thoại
+      }
     };
 
     _html5QrCode.start(
@@ -566,21 +580,21 @@
       config,
       function(decodedText) {
         var code = (decodedText || '').trim().toUpperCase();
-        // Kiểm tra đúng định dạng bill 18 ký tự
-        var billRegex = /^001[A-Z]{2}221\d{10}$/;
-        if (billRegex.test(code)) {
+
+        // Regex chấp nhận: 3 số đầu (000 hoặc 001) + 2 chữ cái quầy + 221 + 10 số (YYMM + STT)
+        var billRegex = /^\d{3}[A-Z]{2}221\d{10}$/;
+
+        if (billRegex.test(code) && code.length === 18) {
           document.getElementById('f_tid').value = code;
-          stopScanner();
-        } else {
-          // Nếu quét ra chuỗi khác 18 ký tự quy định
-          alert("Mã vạch vừa quét: " + code + " không khớp cấu trúc bill 18 ký tự chuẩn.");
+          stopScanner(); // Quét đúng -> Tự động đóng camera và điền vào ô
         }
+        // Nếu quét phải chuỗi rác/chưa đủ ký tự: Tự động lướt qua để quét tiếp, không hiện alert
       },
       function(error) {
-        // Lỗi nhận dạng từng frame (bỏ qua để quét tiếp)
+        // Lỗi nhận diện từng khung hình (bỏ qua để quét liên tục)
       }
     ).catch(function(err) {
-      alert("Không thể mở camera. Vui lòng kiểm tra quyền truy cập Camera trên trình duyệt.");
+      alert("Không thể mở camera. Vui lòng cấp quyền truy cập máy ảnh cho trình duyệt.");
       stopScanner();
     });
   }
@@ -687,7 +701,7 @@
       return;
     }
 
-    var billRegex = /^001[A-Z]{2}221\d{10}$/;
+    var billRegex = /^\d{3}[A-Z]{2}221\d{10}$/;
     if (tid.length !== 18 || !billRegex.test(tid)) {
       err.textContent = 'Mã bill "' + tid + '" không đúng quy định! Phải đúng 18 ký tự (Ví dụ: 001BU2212609002866).';
       err.style.display = 'block';
