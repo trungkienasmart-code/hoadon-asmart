@@ -76,13 +76,20 @@
     }
     textarea { resize: none; height: 80px; }
 
-    /* Nút kích hoạt Camera */
-    .btn-camera {
+/* Hàng nút bấm chức năng quét/chụp */
+    .scan-btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .btn-scan-act {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      padding: 0 16px;
+      gap: 6px;
+      padding: 10px 0;
       background: #e8f5ee;
       border: 1.5px solid #198754;
       border-radius: 8px;
@@ -90,19 +97,16 @@
       font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      white-space: nowrap;
       transition: background 0.15s;
     }
-    .btn-camera:active { background: #cce9d8; }
-    
-    .btn-photo {
-  background: #e3f2fd;
-  border-color: #0d6efd;
-  color: #0d6efd;
-}
-.btn-photo:active {
-  background: #bbdefb;
-}
+    .btn-scan-act:active { background: #cce9d8; }
+
+    .btn-scan-act.btn-photo {
+      background: #e3f2fd;
+      border-color: #0d6efd;
+      color: #0d6efd;
+    }
+    .btn-scan-act.btn-photo:active { background: #bbdefb; }
 
     #tax-searching {
       display: none;
@@ -398,27 +402,24 @@
     <div class="row">
       <div class="field">
         <label>Số giao dịch (18 ký tự) <span class="req">*</span></label>
-        <div class="input-scan-group">
-  <input id="f_tid" type="text" placeholder="001BU22126..." maxlength="18" autocomplete="off" oninput="this.value = this.value.toUpperCase().trim()"/>
-  
-  <!-- Nút quét trực tiếp qua video -->
-  <button type="button" class="btn-camera" onclick="startScanner()" title="Quét trực tiếp">
-    📹 Quét
-  </button>
+        <!-- Ô nhập full độ rộng -->
+        <input id="f_tid" type="text" placeholder="001BU22126..." maxlength="18" autocomplete="off" oninput="this.value = this.value.toUpperCase().trim()"/>
+        
+        <!-- Hàng 2 nút Quét và Chụp chuyển xuống dưới -->
+        <div class="scan-btn-group">
+          <button type="button" class="btn-scan-act" onclick="startScanner()" title="Mở camera quét trực tiếp">
+            📹 Quét mã
+          </button>
+          <button type="button" class="btn-scan-act btn-photo" onclick="triggerCapture()" title="Chụp ảnh mã vạch bill">
+            📷 Chụp ảnh
+          </button>
+        </div>
 
-  <!-- Nút chụp ảnh hóa đơn -->
-  <button type="button" class="btn-camera btn-photo" onclick="triggerCapture()" title="Chụp ảnh bill">
-    📷 Chụp
-  </button>
-
-  <!-- Input file ẩn kích hoạt camera gốc của điện thoại -->
-  <input type="file" id="file-capture" accept="image/*" capture="environment" style="display: none;" onchange="handleCapturedImage(this)"/>
-</div>
-<span id="photo-loading" style="display:none; font-size:13px; color:#198754; font-weight:500; margin-top:2px;">
-  ⏳ Đang nhận diện mã vạch từ ảnh chụp...
-</span>
+        <input type="file" id="file-capture" accept="image/*" capture="environment" style="display: none;" onchange="handleCapturedImage(this)"/>
+        <span id="photo-loading" style="display:none; font-size:13px; color:#198754; font-weight:500;">⏳ Đang đọc mã vạch...</span>
         <span class="field-hint">Mẫu: 001 + Quầy (2 chữ) + 221 + YYMM + 6 số</span>
       </div>
+
       <div class="field">
         <label>Ngày mua hàng <span class="req">*</span></label>
         <input id="f_date" type="date"/>
